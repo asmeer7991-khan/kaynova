@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+ <meta charset="utf-8"/>
+ <meta name="viewport" content="width=device-width,initial-scale=1"/>
+ <title>Purchase Entry</title>
+ <style>
+  :root { color-scheme: light dark; }
+  body{font-family:Arial,Helvetica,sans-serif;margin:24px}
+  .bar{display:flex;gap:12px;align-items:center;margin-bottom:16px}
+  .back{margin-right:auto;text-decoration:none}
+  h1{margin:0;font-size:20px}
+  .card{border:1px solid #ddd;border-radius:8px;padding:16px;max-width:980px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+  .col{display:flex;flex-direction:column;min-width:180px}
+  .grow{flex:1}
+  .label{font-size:12px;color:#666;margin:0 0 4px}
+  input,select,button{padding:10px;font-size:14px}
+  input[readonly]{background:#f7f7f7}
+  #msg{color:#0a7;font-weight:700;min-height:18px;margin:8px 0}
+  #err{color:#b00;font-weight:700;min-height:18px;margin:8px 0}
+  .actions{display:flex;gap:10px;align-items:end}
+ </style>
+</head>
+<body>
+ <div class="bar">
+  <a class="back" id="backLink">⬅ Back</a>
+  <h1 id="secTitle">Section • Purchase</h1>
+ </div>
+
+ <div id="msg"></div>
+ <div id="err"></div>
+
+ <div class="card">
+  <div class="row">
+   <div class="col grow">
+    <span class="label">Name</span>
+    <input id="name" placeholder="e.g., baggy" />
+   </div>
+   <div class="col">
+    <span class="label">Color</span>
+    <input id="color" placeholder="e.g., red" />
+   </div>
+   <div class="col">
+    <span class="label">Size</span>
+    <select id="size">
+     <option value="" selected disabled>Choose</option>
+     <option>S</option><option>M</option><option>L</option><option>XL</option>
+    </select>
+   </div>
+   <div class="col">
+    <span class="label">Quantity</span>
+    <input id="qty" type="number" min="1" value="1" />
+   </div>
+   <div class="col">
+    <span class="label">Purchase Price (per unit)</span>
+    <input id="pprice" type="number" min="0.01" step="0.01" placeholder="0.00" />
+   </div>
+   <div class="col">
+    <span class="label">Total Purchase Price (auto)</span>
+    <input id="total" type="number" step="0.01" readonly />
+   </div>
+   <div class="col actions">
+    <button id="saveBtn">Save Purchase</button>
+   </div>
+  </div>
+ </div>
+
+ <script>
+  // read section and set title + back link
+  const params = new URLSearchParams(location.search);
+  const section = (params.get("section") || "").toUpperCase();
+  document.getElementById("secTitle").textContent = (section || "Section") + " • Purchase";
+  document.getElementById("backLink").href = "/section.html?section=" + encodeURIComponent(section);
+
+  // helpers
+  const el = (s) => document.querySelector(s);
+  const showMsg = (t) => { el("#msg").textContent = t; setTimeout(()=> el("#msg").textContent="", 1400); };
+  const showErr = (t) => { el("#err").textContent = t; setTimeout(()=> el("#err").textContent="", 2000); };
+
+  // auto total
+  function recalc(){
+   const q = parseFloat(el("#qty").value) || 0;
+   const p = parseFloat(el("#pprice").value) || 0;
+   el("#total").value = (q * p).toFixed(2);
+  }
+  ["#qty", "#pprice"].forEach(id => el(id).addEventListener("input", recalc));
+  recalc();
+
+  // API helper
+  async function api(path, opt = {}) {
+   const token = localStorage.getItem("token");
+   const headers = { "Content-Type": "application/json", ...(opt.headers || {}) };
+   if (token) headers["Authorization"] = "Bearer " + token;
+   const res = await fetch(path, { ...opt, headers });
+   if (res.status === 401) { showErr("Please login first"); throw new Error("Unauthorized"); }
+   if (!res.ok) {
+    const txt = await res.text().catch(()=> "Request failed");
+    throw new Error(txt || "Request failed");
+   }
+   return res.json();
+  }
+
+  // submit
+  document.getElementById("saveBtn").onclick = async () => {
+   const name = el("#name").value.trim();
+   const color = el("#color").value.trim();
+   const size = el("#size").value;
+   const quantity = parseInt(el("#qty").value, 10);
+   const purchase_price = parseFloat(el("#pprice").value);
+   const total_purchase_price = parseFloat(el("#total").value);
+
+   if (!section) return showErr("No section");
+   if (!name || !color || !size) return showErr("Fill all fields");
+   if (!Number.isInteger(quantity) || quantity <= 0) return showErr("Quantity > 0");
+   if (!(purchase_price > 0)) return showErr("Purchase price > 0");
+
+   try {
+    const payload = { name, color, size, quantity, purchase_price, total_purchase_price, section };
+    // NOTE: requires a /purchase POST route on server
+    const out = await api("/purchase", { method: "POST", body: JSON.stringify(payload) });
+    showMsg(out.message || "Saved");
+
+    // clear form
+    el("#name").value = "";
+    el("#color").value = "";
+    el("#size").value = "";
+    el("#qty").value = 1;
+    el("#pprice").value = "";
+    recalc();
+   } catch (e) {
+    showErr(e.message || "Save failed");
+   }
+  };
+ </script>
+</body>
+</html>

@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+ <meta charset="utf-8"/>
+ <meta name="viewport" content="width=device-width,initial-scale=1"/>
+ <title>Sell</title>
+ <style>
+  :root { color-scheme: light dark; }
+  body{font-family:Arial,Helvetica,sans-serif;margin:24px}
+  .bar{display:flex;gap:12px;align-items:center;margin-bottom:16px}
+  .back{margin-right:auto;text-decoration:none}
+  h1{margin:0;font-size:20px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+  input,button,select{padding:8px;font-size:14px}
+  table{border-collapse:collapse;width:100%;margin-top:10px}
+  th,td{border:1px solid #ddd;padding:8px;text-align:left;vertical-align:middle}
+  th{background:#f5f5f5}
+  .num{text-align:right}
+  .msg{color:#0a7;font-weight:700;min-height:18px;margin:8px 0}
+  .err{color:#b00;font-weight:700;min-height:18px;margin:8px 0}
+  .cell-input{display:flex;gap:6px;align-items:center}
+  .small{width:90px}
+  .med{width:120px}
+  .wide{width:160px}
+  .auth{border:1px solid #eee;padding:10px;border-radius:8px;margin-bottom:10px}
+  .hidden{display:none}
+ </style>
+</head>
+<body>
+ <div class="bar">
+  <a class="back" id="backLink">⬅ Back</a>
+  <h1 id="secTitle">Section • Sell</h1>
+ </div>
+
+ <!-- simple auth (so you can log in here too) -->
+ <div class="auth" id="authBox">
+  <div class="row">
+   <input id="user" placeholder="username"/>
+   <input id="pass" placeholder="password" type="password"/>
+   <button id="login">Login</button>
+   <button id="register">Register</button>
+   <button id="logout" class="hidden">Logout</button>
+   <span id="who" style="margin-left:8px;color:#666"></span>
+  </div>
+ </div>
+
+ <div class="msg" id="msg"></div>
+ <div class="err" id="err"></div>
+
+ <table id="tbl">
+  <thead>
+   <tr>
+    <th>ID</th>
+    <th>Name</th>
+    <th>Size</th>
+    <th class="num">Current Qty</th>
+    <th class="num">Purchase Price</th>
+    <th class="num">Remaining Amount</th>
+    <th class="num">Sell Qty</th>
+    <th class="num">Sell Price</th>
+    <th class="num">Total Sell Price</th>
+    <th class="num">Remaining After</th>
+    <th>Action</th>
+   </tr>
+  </thead>
+  <tbody id="body"></tbody>
+ </table>
+
+<script>
+ // ===== setup / helpers =====
+ const params = new URLSearchParams(location.search);
+ const section = (params.get("section") || "").toUpperCase();
+ document.getElementById("secTitle").textContent = (section || "Section") + " • Sell";
+ document.getElementById("backLink").href = "/section.html?section=" + encodeURIComponent(section);
+
+ const el = (s) => document.querySelector(s);
+ const msg = (t) => { el("#msg").textContent = t; setTimeout(()=> el("#msg").textContent="", 1400); };
+ const err = (t) => { el("#err").textContent = t; setTimeout(()=> el("#err").textContent="", 1800); };
+ const token = () => localStorage.getItem("token");
+ const authHdr = () => token()? { "Authorization": "Bearer " + token() } : {};
+
+ function money(n){ n = Number(n||0); return n.toFixed(2); }
+
+ async function api(path, opt={}) {
+  const res = await fetch(path, { ...opt, headers: { "Content-Type":"application/json", ...(opt.headers||{}), ...authHdr() } });
+  if (res.status === 401) { who(""); err("Please login"); throw new Error("Unauthorized"); }
+  if (!res.ok) { throw new Error(await res.text().catch(()=> "Request failed")); }
+  return res.json();
+ }
+
+ function who(user) {
+  if (!user) {
+   el("#logout").classList.add("hidden");
+   el("#who").textContent = "Not logged in";
+   return;
+  }
+  el("#logout").classList.remove("hidden");
+  el("#who").textContent = `Logged in as: ${user.username} (${user.role})`;
+ }
+
+ // ===== auth buttons =====
+ el("#login").onclick = async () => {
+  try {
+   const out = await api("/auth/login", { method:"POST", body: JSON.stringify({ username: el("#user").value.trim(), password: el("#pass").value }) });
+   localStorage.setItem("token", out.token);
+   localStorage.setItem("user", JSON.stringify(out.user));
+   who(out.user); msg("Logged in"); load();
+  } catch(e){ err(e.message || "Login failed"); }
+ };
+ el("#register").onclick = async () => {
+  try {
+   const out = await api("/auth/register", { method:"POST", body: JSON.stringify({ username: el("#user").value.trim(), password: el("#pass").value }) });
+   localStorage.setItem("token", out.token);
+   localStorage.setItem("user", JSON.stringify(out.user));
+   who(out.user); msg("Registered"); load();
+  } catch(e){ err(e.message || "Register failed"); }
+ };
+ el("#logout").onclick = () => {
+  localStorage.removeItem("token"); localStorage.removeItem("user");
+  who(""); msg("Logged out"); render([]);
+ };
+
+ // ===== load stock for the section =====
+ async function load(){
+  const data = await api("/stock?section=" + encodeURIComponent(section)).catch(()=>[]);
+  render(data);
+ }
+
+ function render(rows){
+  const tb = el("#body");
+  tb.innerHTML = "";
+  rows.forEach(r => {
+   const tr = document.createElement("tr");
+   tr.dataset.id = r.id;
+
+   // inputs for sell qty/price
+   const sellQtyInput = document.createElement("input");
+   sellQtyInput.type = "number"; sellQtyInput.min = "1"; sellQtyInput.value = "1"; sellQtyInput.className = "small";
+   const sellPriceInput = document.createElement("input");
+   sellPriceInput.type = "number"; sellPriceInput.min = "0.01"; sellPriceInput.step = "0.01"; sellPriceInput.placeholder = "0.00"; sellPriceInput.className = "med";
+
+   // auto-calc cells
+   const totalSellCell = document.createElement("td"); totalSellCell.className = "num"; totalSellCell.textContent = "0.00";
+   const remainAfterCell = document.createElement("td"); remainAfterCell.className = "num"; remainAfterCell.textContent = String(r.quantity - 1);
+
+   function recalc(){
+    const q = Math.max(0, parseInt(sellQtyInput.value||"0",10));
+    const p = Math.max(0, parseFloat(sellPriceInput.value||"0"));
+    totalSellCell.textContent = money(q * p);
+    remainAfterCell.textContent = String(Math.max(0, r.quantity - q));
+   }
+   sellQtyInput.addEventListener("input", recalc);
+   sellPriceInput.addEventListener("input", recalc);
+   recalc();
+
+   // action button
+   const btn = document.createElement("button");
+   btn.textContent = "Sell";
+   btn.onclick = async () => {
+    const q = parseInt(sellQtyInput.value,10);
+    const p = parseFloat(sellPriceInput.value);
+    if (!Number.isInteger(q) || q <= 0) return err("Enter valid Sell Qty");
+    if (!(p > 0)) return err("Enter Sell Price");
+    try {
+     // NOTE: we will update the server to accept sell_price from body
+     const out = await api(`/sell/${r.id}`, { method:"POST", body: JSON.stringify({ qty: q, sell_price: p }) });
+     msg(out.message || `Sold ${q}. Profit: ${money(out.profit||0)}`);
+     load(); // refresh table
+    } catch(e){ err(e.message || "Sell failed"); }
+   };
+
+   // build row
+   tr.innerHTML = `
+    <td>${r.id}</td>
+    <td>${r.name}</td>
+    <td>${r.size}</td>
+    <td class="num">${r.quantity}</td>
+    <td class="num">${money(r.purchase_price)}</td>
+    <td class="num">${money(r.quantity * r.purchase_price)}</td>
+   `;
+   // Sell Qty cell
+   const qtyCell = document.createElement("td"); qtyCell.className = "num"; qtyCell.appendChild(sellQtyInput);
+   // Sell Price cell
+   const priceCell = document.createElement("td"); priceCell.className = "num"; priceCell.appendChild(sellPriceInput);
+   // Action cell
+   const actCell = document.createElement("td"); actCell.appendChild(btn);
+
+   tr.appendChild(qtyCell);
+   tr.appendChild(priceCell);
+   tr.appendChild(totalSellCell);
+   tr.appendChild(remainAfterCell);
+   tr.appendChild(actCell);
+
+   tb.appendChild(tr);
+  });
+
+  if (!rows.length) {
+   const tr = document.createElement("tr");
+   const td = document.createElement("td");
+   td.colSpan = 11; td.textContent = "No stock found in this section. Add purchases first.";
+   tr.appendChild(td); tb.appendChild(tr);
+  }
+ }
+
+ // init auth state & load
+ try { const u = JSON.parse(localStorage.getItem("user")||"null"); if (u) who(u); else who(""); } catch{}
+ if (!section) err("No section in URL"); else load();
+</script>
+</body>
+</html>

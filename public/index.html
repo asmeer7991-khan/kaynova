@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+ <meta charset="utf-8" />
+ <meta name="viewport" content="width=device-width,initial-scale=1" />
+ <title>Select Section</title>
+ <style>
+  :root { color-scheme: light dark; }
+  body { font-family: Arial, sans-serif; margin: 32px; display: flex; flex-direction: column; gap: 16px; }
+  h1 { margin: 0 0 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; max-width: 520px; }
+  a.btn {
+   display: inline-block; text-align: center; padding: 16px 20px;
+   border: 2px solid #444; border-radius: 10px; text-decoration: none;
+   font-weight: 700; letter-spacing: .3px; color: inherit;
+  }
+  a.btn:hover { background: #f3f3f3; }
+ </style>
+</head>
+<body>
+ <h1>Choose Section</h1>
+
+ <div class="grid">
+  <a class="btn" href="/section.html?section=MOM">MOM</a>
+  <a class="btn" href="/section.html?section=KAYNOVA">KAYNOVA</a>
+ </div>
+</body>
+</html>

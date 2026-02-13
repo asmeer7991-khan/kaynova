@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+ <meta charset="utf-8"/>
+ <meta name="viewport" content="width=device-width,initial-scale=1"/>
+ <title>Profit</title>
+ <style>
+  :root { color-scheme: light dark; }
+  body{font-family:Arial,Helvetica,sans-serif;margin:24px}
+  .bar{display:flex;gap:12px;align-items:center;margin-bottom:16px}
+  .back{margin-right:auto;text-decoration:none}
+  h1{margin:0;font-size:20px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+  input,button{padding:8px;font-size:14px}
+  table{border-collapse:collapse;width:100%;margin-top:10px}
+  th,td{border:1px solid #ddd;padding:8px;text-align:left;vertical-align:middle}
+  th{background:#f5f5f5}
+  .num{text-align:right}
+  .msg{color:#0a7;font-weight:700;min-height:18px;margin:8px 0}
+  .err{color:#b00;font-weight:700;min-height:18px;margin:8px 0}
+  .auth{border:1px solid #eee;padding:10px;border-radius:8px;margin-bottom:10px}
+  .hidden{display:none}
+  tfoot td{font-weight:700;background:#fafafa}
+  .badge{padding:4px 8px;border:1px solid #ccd;border-radius:8px;background:#eef}
+ </style>
+</head>
+<body>
+ <div class="bar">
+  <a class="back" id="backLink">⬅ Back</a>
+  <h1 id="secTitle">Section • Profit</h1>
+  <span id="range" class="badge">All time</span>
+ </div>
+
+ <div class="auth" id="authBox">
+  <div class="row">
+   <input id="user" placeholder="username"/>
+   <input id="pass" placeholder="password" type="password"/>
+   <button id="login">Login</button>
+   <button id="register">Register</button>
+   <button id="logout" class="hidden">Logout</button>
+   <span id="who" style="margin-left:8px;color:#666"></span>
+  </div>
+ </div>
+
+ <div class="row">
+  <label>Expenses (optional): <input id="expenses" type="number" min="0" step="0.01" value="0.00"/></label>
+  <button id="applyExp">Apply</button>
+ </div>
+
+ <div class="msg" id="msg"></div>
+ <div class="err" id="err"></div>
+
+ <table id="tbl">
+  <thead>
+   <tr>
+    <th>Product</th>
+    <th>Size</th>
+    <th class="num">Purchased Qty</th>
+    <th class="num">Purchased Cost</th>
+    <th class="num">Sold Qty</th>
+    <th class="num">Sold Revenue</th>
+    <th class="num">Profit</th>
+    <th class="num">Remaining Qty</th>
+    <th class="num">Remaining Value</th>
+   </tr>
+  </thead>
+  <tbody id="body"></tbody>
+  <tfoot>
+   <tr>
+    <td colspan="2">TOTALS</td>
+    <td class="num" id="t_pqty">0</td>
+    <td class="num" id="t_pcost">0.00</td>
+    <td class="num" id="t_sqty">0</td>
+    <td class="num" id="t_srev">0.00</td>
+    <td class="num" id="t_profit">0.00</td>
+    <td class="num" id="t_rqty">0</td>
+    <td class="num" id="t_rval">0.00</td>
+   </tr>
+   <tr>
+    <td colspan="8" class="num">Expenses</td>
+    <td class="num" id="t_exp">0.00</td>
+   </tr>
+   <tr>
+    <td colspan="8" class="num">Net Profit (Profit - Expenses)</td>
+    <td class="num" id="t_net">0.00</td>
+   </tr>
+  </tfoot>
+ </table>
+
+<script>
+ // ---- setup
+ const params = new URLSearchParams(location.search);
+ const section = (params.get("section") || "").toUpperCase();
+ document.getElementById("secTitle").textContent = (section || "Section") + " • Profit";
+ document.getElementById("backLink").href = "/section.html?section=" + encodeURIComponent(section);
+
+ const el = (s) => document.querySelector(s);
+ const msg = (t) => { el("#msg").textContent = t; setTimeout(()=> el("#msg").textContent="", 1400); };
+ const err = (t) => { el("#err").textContent = t; setTimeout(()=> el("#err").textContent="", 1800); };
+ const token = () => localStorage.getItem("token");
+ const authHdr = () => token()? { "Authorization": "Bearer " + token() } : {};
+ const money = (n) => Number(n||0).toFixed(2);
+
+ async function api(path, opt={}) {
+  const res = await fetch(path, { ...opt, headers: { "Content-Type":"application/json", ...(opt.headers||{}), ...authHdr() } });
+  if (res.status === 401) { who(""); err("Please login"); throw new Error("Unauthorized"); }
+  if (!res.ok) { throw new Error(await res.text().catch(()=> "Request failed")); }
+  return res.json();
+ }
+
+ function who(user) {
+  if (!user) {
+   el("#logout").classList.add("hidden");
+   el("#who").textContent = "Not logged in";
+   return;
+  }
+  el("#logout").classList.remove("hidden");
+  el("#who").textContent = `Logged in as: ${user.username} (${user.role})`;
+ }
+
+ // ---- auth
+ el("#login").onclick = async () => {
+  try {
+   const out = await api("/auth/login", { method:"POST", body: JSON.stringify({ username: el("#user").value.trim(), password: el("#pass").value }) });
+   localStorage.setItem("token", out.token);
+   localStorage.setItem("user", JSON.stringify(out.user));
+   who(out.user); msg("Logged in"); load();
+  } catch(e){ err(e.message || "Login failed"); }
+ };
+ el("#register").onclick = async () => {
+  try {
+   const out = await api("/auth/register", { method:"POST", body: JSON.stringify({ username: el("#user").value.trim(), password: el("#pass").value }) });
+   localStorage.setItem("token", out.token);
+   localStorage.setItem("user", JSON.stringify(out.user));
+   who(out.user); msg("Registered"); load();
+  } catch(e){ err(e.message || "Register failed"); }
+ };
+ el("#logout").onclick = () => {
+  localStorage.removeItem("token"); localStorage.removeItem("user");
+  who(""); msg("Logged out"); render({ items:[], totals:{} });
+ };
+
+ // ---- load & render
+ async function load(){
+  if (!section) { err("No section in URL"); return; }
+  // NOTE: this expects a server route: GET /profit/details?section=...
+  // We’ll add it next.
+  const data = await api("/profit/details?section=" + encodeURIComponent(section)).catch(() => ({ items:[], totals:{} }));
+  render(data);
+ }
+
+ function render(data){
+  const items = data.items || [];
+  const totals = data.totals || { purchased_qty:0, purchased_cost:0, sold_qty:0, sold_revenue:0, profit:0, remaining_qty:0, remaining_value:0 };
+
+  const tb = el("#body"); tb.innerHTML = "";
+  items.forEach(it => {
+   const tr = document.createElement("tr");
+   tr.innerHTML = `
+    <td>${it.name}</td>
+    <td>${it.size || ""}</td>
+    <td class="num">${it.purchased_qty}</td>
+    <td class="num">${money(it.purchased_cost)}</td>
+    <td class="num">${it.sold_qty}</td>
+    <td class="num">${money(it.sold_revenue)}</td>
+    <td class="num">${money(it.profit)}</td>
+    <td class="num">${it.remaining_qty}</td>
+    <td class="num">${money(it.remaining_value)}</td>
+   `;
+   tb.appendChild(tr);
+  });
+
+  el("#t_pqty").textContent = totals.purchased_qty || 0;
+  el("#t_pcost").textContent = money(totals.purchased_cost);
+  el("#t_sqty").textContent = totals.sold_qty || 0;
+  el("#t_srev").textContent = money(totals.sold_revenue);
+  el("#t_profit").textContent = money(totals.profit);
+  el("#t_rqty").textContent = totals.remaining_qty || 0;
+  el("#t_rval").textContent = money(totals.remaining_value);
+
+  // apply existing expenses value
+  applyExpenses();
+ }
+
+ function applyExpenses(){
+  const exp = parseFloat(el("#expenses").value || "0") || 0;
+  el("#t_exp").textContent = money(exp);
+  const p = parseFloat(el("#t_profit").textContent || "0") || 0;
+  el("#t_net").textContent = money(p - exp);
+ }
+ el("#applyExp").onclick = applyExpenses;
+
+ // init
+ try { const u = JSON.parse(localStorage.getItem("user")||"null"); if (u) who(u); else who(""); } catch{}
+ load();
+</script>
+</body>
+</html>
