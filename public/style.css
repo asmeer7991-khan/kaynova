@@ -1,0 +1,226 @@
+/* =========================
+   GENERAL PAGE STYLING
+   ========================= */
+:root {
+  color-scheme: light;
+}
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  margin: 24px;
+  background-color: #ffffff; /* clean white background */
+  color: #333;               /* main text color */
+}
+
+h1 {
+  margin: 0;
+  font-size: 22px;
+  color: #2196F3; /* bright blue headers */
+}
+
+a {
+  text-decoration: none;
+  color: #2196F3;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+
+.bar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.back {
+  margin-right: auto;
+  color: #2196F3;
+  font-weight: bold;
+}
+
+input, select, button {
+  padding: 8px;
+  font-size: 14px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+}
+
+input:focus, select:focus {
+  outline: none;
+  border-color: #2196F3;
+}
+
+button {
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+button:hover {
+  background-color: #45a049;
+}
+
+button:disabled {
+  background-color: #aaa;
+  cursor: not-allowed;
+}
+
+/* =========================
+   TABLE STYLING
+   ========================= */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 10px;
+  font-size: 14px;
+}
+
+th, td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+th {
+  background-color: #f5f5f5;
+  color: #333;
+}
+
+tr:nth-child(even) {
+  background-color: #fafafa; /* zebra rows */
+}
+
+.num {
+  text-align: right;
+}
+
+tfoot td {
+  font-weight: 700;
+  background-color: #fafafa;
+}
+
+/* =========================
+   BADGES & MESSAGES
+   ========================= */
+.badge {
+  padding: 4px 8px;
+  border: 1px solid #ccd;
+  border-radius: 8px;
+  background-color: #eef; /* light blue badge */
+  color: #333;
+}
+
+.msg {
+  color: #0a7;
+  font-weight: 700;
+  min-height: 18px;
+  margin: 8px 0;
+}
+
+.err {
+  color: #b00;
+  font-weight: 700;
+  min-height: 18px;
+  margin: 8px 0;
+}
+
+/* =========================
+   AUTH BOX (login/register/logout)
+   ========================= */
+.auth {
+  border: 1px solid #eee;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  background-color: #fdfdfd;
+}
+
+.hidden {
+  display: none;
+}
+
+/* =========================
+   INPUT STYLING
+   ========================= */
+input[type="number"] {
+  max-width: 120px;
+}
+
+label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* =========================
+   RESPONSIVE
+   ========================= */
+@media (max-width: 768px) {
+  .row {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  table {
+    font-size: 12px;
+  }
+
+  input, select, button {
+    width: 100%;
+  }
+}
+
+/* =========================
+   PURCHASE & SELL PAGE SPECIFIC
+   ========================= */
+.purchase-section, .sell-section {
+  margin-top: 20px;
+}
+
+.purchase-section button, .sell-section button {
+  margin-top: 10px;
+}
+
+/* =========================
+   FOOTER / TOTALS
+   ========================= */
+tfoot tr td.num {
+  background-color: #f9f9f9;
+}
+
+/* =========================
+   OPTIONAL STYLING
+   ========================= */
+body::-webkit-scrollbar {
+  width: 10px;
+}
+
+body::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+body::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 5px;
+}
+
+body::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}

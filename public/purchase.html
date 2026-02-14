@@ -1,9 +1,12 @@
+
+
 <!doctype html>
 <html lang="en">
 <head>
  <meta charset="utf-8"/>
  <meta name="viewport" content="width=device-width,initial-scale=1"/>
  <title>Purchase Entry</title>
+ <link rel="stylesheet" href="style.css">
  <style>
   :root { color-scheme: light dark; }
   body{font-family:Arial,Helvetica,sans-serif;margin:24px}
@@ -53,6 +56,11 @@
     <input id="qty" type="number" min="1" value="1" />
    </div>
    <div class="col">
+<span class="label">Purchase Date</span>
+<input id="pdate" type="date">
+</div>
+
+   <div class="col">
     <span class="label">Purchase Price (per unit)</span>
     <input id="pprice" type="number" min="0.01" step="0.01" placeholder="0.00" />
    </div>
@@ -66,10 +74,39 @@
   </div>
  </div>
 
+ <h2>Purchase History</h2>
+
+<table border="1" id="purchaseTable">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Name</th>
+      <th>Color</th>
+      <th>Size</th>
+      <th>Quantity</th>
+      <th>Purchase Price</th>
+      <th>Selling Price</th>
+      <th>Purchase Date</th>
+    </tr>
+  </thead>
+  <tbody>
+  </tbody>
+</table>
+
+
+
  <script>
+
+  // check login first
+ const token = localStorage.getItem("token");
+if (!token) {
+  alert("You must login first!");
+  window.location.href = `/login.html?section=${encodeURIComponent(section)}&type=purchase`;
+}
   // read section and set title + back link
   const params = new URLSearchParams(location.search);
   const section = (params.get("section") || "").toUpperCase();
+  if (!section) alert("No section in URL!"); // debug
   document.getElementById("secTitle").textContent = (section || "Section") + " • Purchase";
   document.getElementById("backLink").href = "/section.html?section=" + encodeURIComponent(section);
 
@@ -116,10 +153,20 @@
    if (!(purchase_price > 0)) return showErr("Purchase price > 0");
 
    try {
-    const payload = { name, color, size, quantity, purchase_price, total_purchase_price, section };
+   // const payload = { name, color, size, quantity, purchase_price, total_purchase_price, section };
+   const payload = {
+   name,
+  color,
+  size,
+  quantity,
+  purchase_price,
+  section, // <-- must be here
+  purchase_date: document.getElementById("pdate").value
+};
     // NOTE: requires a /purchase POST route on server
     const out = await api("/purchase", { method: "POST", body: JSON.stringify(payload) });
     showMsg(out.message || "Saved");
+    loadHistory();
 
     // clear form
     el("#name").value = "";
@@ -132,6 +179,38 @@
     showErr(e.message || "Save failed");
    }
   };
+
+  async function loadHistory(){
+
+ const res = await api("/stock?section="+section);
+
+const body = document.querySelector("#purchaseTable tbody");
+
+ body.innerHTML="";
+
+ res.forEach(r=>{
+ body.innerHTML+=`
+<tr>
+ <td>${r.id}</td>
+ <td>${r.name}</td>
+ <td>${r.color || ""}</td>
+ <td>${r.size}</td>
+<td>${r.quantity}</td>
+ <td>${r.purchase_price}</td>
+ <td>-</td>
+ <td>${r.purchase_date || ""}</td>
+</tr>
+`;
+ });
+
+}
+
+loadHistory();
+  
  </script>
+
+
+
+
 </body>
 </html>

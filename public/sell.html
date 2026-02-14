@@ -1,9 +1,11 @@
+
 <!doctype html>
 <html lang="en">
 <head>
  <meta charset="utf-8"/>
  <meta name="viewport" content="width=device-width,initial-scale=1"/>
  <title>Sell</title>
+ <link rel="stylesheet" href="style.css">
  <style>
   :root { color-scheme: light dark; }
   body{font-family:Arial,Helvetica,sans-serif;margin:24px}
@@ -33,12 +35,12 @@
  </div>
 
  <!-- simple auth (so you can log in here too) -->
- <div class="auth" id="authBox">
+<div class="auth" id="authBox">
   <div class="row">
-   <input id="user" placeholder="username"/>
+   <!--<input id="user" placeholder="username"/>
    <input id="pass" placeholder="password" type="password"/>
    <button id="login">Login</button>
-   <button id="register">Register</button>
+   <button id="register">Register</button> -->
    <button id="logout" class="hidden">Logout</button>
    <span id="who" style="margin-left:8px;color:#666"></span>
   </div>
@@ -65,11 +67,35 @@
   </thead>
   <tbody id="body"></tbody>
  </table>
+ <h2>Past Sales</h2>
+<table id="salesTbl">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>T-Shirt</th>
+      <th>Qty</th>
+      <th>Unit Price</th>
+      <th>Profit</th>
+      <th>Sell Date</th>
+    </tr>
+  </thead>
+  <tbody id="salesBody"></tbody>
+</table>
+
 
 <script>
+  // check login first
+
+const tokenValue = localStorage.getItem("token");
+
+if (!tokenValue) {
+  alert("You must login first!");
+  window.location.href = `/login.html?section=${encodeURIComponent(section)}&type=sell`;
+}
+
  // ===== setup / helpers =====
  const params = new URLSearchParams(location.search);
- const section = (params.get("section") || "").toUpperCase();
+ const section = (params.get("section") || "MOM").toUpperCase();
  document.getElementById("secTitle").textContent = (section || "Section") + " • Sell";
  document.getElementById("backLink").href = "/section.html?section=" + encodeURIComponent(section);
 
@@ -99,7 +125,7 @@
  }
 
  // ===== auth buttons =====
- el("#login").onclick = async () => {
+ /*el("#login").onclick = async () => {
   try {
    const out = await api("/auth/login", { method:"POST", body: JSON.stringify({ username: el("#user").value.trim(), password: el("#pass").value }) });
    localStorage.setItem("token", out.token);
@@ -114,97 +140,167 @@
    localStorage.setItem("user", JSON.stringify(out.user));
    who(out.user); msg("Registered"); load();
   } catch(e){ err(e.message || "Register failed"); }
- };
+ }; */
  el("#logout").onclick = () => {
   localStorage.removeItem("token"); localStorage.removeItem("user");
   who(""); msg("Logged out"); render([]);
- };
+ }; 
+
+ // ===== Load past sales =====
+async function loadSales() {
+  const tb = el("#salesBody");
+  tb.innerHTML = "<tr><td colspan='6'>Loading...</td></tr>";
+  try {
+    const sales = await api("/sales?section=" + encodeURIComponent(section));
+    tb.innerHTML = "";
+    if (!sales.length) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = "<td colspan='6'>No past sales yet.</td>";
+      tb.appendChild(tr);
+      return;
+    }
+    sales.forEach(s => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${s.id}</td>
+        <td>${s.tshirt_name}</td>
+        <td class="num">${s.qty}</td>
+        <td class="num">${money(s.unit_selling)}</td>
+        <td class="num">${money(s.profit)}</td>
+        <td>${s.sell_date.slice(0,10)}</td>
+      `;
+      tb.appendChild(tr);
+    });
+  } catch(e) {
+    tb.innerHTML = "<tr><td colspan='6'>Failed to load sales</td></tr>";
+    console.error("Failed to load sales", e);
+  }
+}
 
  // ===== load stock for the section =====
  async function load(){
   const data = await api("/stock?section=" + encodeURIComponent(section)).catch(()=>[]);
   render(data);
  }
-
- function render(rows){
+function render(rows){
   const tb = el("#body");
   tb.innerHTML = "";
+
   rows.forEach(r => {
-   const tr = document.createElement("tr");
-   tr.dataset.id = r.id;
+    const tr = document.createElement("tr");
+    tr.dataset.id = r.id;
 
-   // inputs for sell qty/price
-   const sellQtyInput = document.createElement("input");
-   sellQtyInput.type = "number"; sellQtyInput.min = "1"; sellQtyInput.value = "1"; sellQtyInput.className = "small";
-   const sellPriceInput = document.createElement("input");
-   sellPriceInput.type = "number"; sellPriceInput.min = "0.01"; sellPriceInput.step = "0.01"; sellPriceInput.placeholder = "0.00"; sellPriceInput.className = "med";
+    // ===== Inputs =====
+    const sellQtyInput = document.createElement("input");
+    sellQtyInput.type = "number";
+    sellQtyInput.min = "0";
+    sellQtyInput.value = "0";
+    sellQtyInput.className = "small";
 
-   // auto-calc cells
-   const totalSellCell = document.createElement("td"); totalSellCell.className = "num"; totalSellCell.textContent = "0.00";
-   const remainAfterCell = document.createElement("td"); remainAfterCell.className = "num"; remainAfterCell.textContent = String(r.quantity - 1);
+    const sellPriceInput = document.createElement("input");
+    sellPriceInput.type = "number";
+    sellPriceInput.min = "0.01";
+    sellPriceInput.step = "0.01";
+    sellPriceInput.placeholder = "0.00";
+    sellPriceInput.className = "med";
 
-   function recalc(){
-    const q = Math.max(0, parseInt(sellQtyInput.value||"0",10));
-    const p = Math.max(0, parseFloat(sellPriceInput.value||"0"));
-    totalSellCell.textContent = money(q * p);
-    remainAfterCell.textContent = String(Math.max(0, r.quantity - q));
-   }
-   sellQtyInput.addEventListener("input", recalc);
-   sellPriceInput.addEventListener("input", recalc);
-   recalc();
+    const sellDateInput = document.createElement("input");
+    sellDateInput.type = "date";
+    sellDateInput.value = new Date().toISOString().slice(0,10);
+    sellDateInput.className = "med";
 
-   // action button
-   const btn = document.createElement("button");
-   btn.textContent = "Sell";
-   btn.onclick = async () => {
-    const q = parseInt(sellQtyInput.value,10);
-    const p = parseFloat(sellPriceInput.value);
-    if (!Number.isInteger(q) || q <= 0) return err("Enter valid Sell Qty");
-    if (!(p > 0)) return err("Enter Sell Price");
-    try {
-     // NOTE: we will update the server to accept sell_price from body
-     const out = await api(`/sell/${r.id}`, { method:"POST", body: JSON.stringify({ qty: q, sell_price: p }) });
-     msg(out.message || `Sold ${q}. Profit: ${money(out.profit||0)}`);
-     load(); // refresh table
-    } catch(e){ err(e.message || "Sell failed"); }
-   };
+    // ===== Auto-calc cells =====
+    const totalSellCell = document.createElement("td");
+    totalSellCell.className = "num";
+    totalSellCell.textContent = "0.00";
 
-   // build row
-   tr.innerHTML = `
-    <td>${r.id}</td>
-    <td>${r.name}</td>
-    <td>${r.size}</td>
-    <td class="num">${r.quantity}</td>
-    <td class="num">${money(r.purchase_price)}</td>
-    <td class="num">${money(r.quantity * r.purchase_price)}</td>
-   `;
-   // Sell Qty cell
-   const qtyCell = document.createElement("td"); qtyCell.className = "num"; qtyCell.appendChild(sellQtyInput);
-   // Sell Price cell
-   const priceCell = document.createElement("td"); priceCell.className = "num"; priceCell.appendChild(sellPriceInput);
-   // Action cell
-   const actCell = document.createElement("td"); actCell.appendChild(btn);
+    const remainAfterCell = document.createElement("td");
+    remainAfterCell.className = "num";
+    remainAfterCell.textContent = String(r.quantity - 1);
 
-   tr.appendChild(qtyCell);
-   tr.appendChild(priceCell);
-   tr.appendChild(totalSellCell);
-   tr.appendChild(remainAfterCell);
-   tr.appendChild(actCell);
+    function recalc() {
+      const q = Math.max(0, parseInt(sellQtyInput.value||"0",10));
+      const p = Math.max(0, parseFloat(sellPriceInput.value||"0"));
+      totalSellCell.textContent = money(q * p);
+      remainAfterCell.textContent = String(Math.max(0, r.quantity - q));
+    }
 
-   tb.appendChild(tr);
+    sellQtyInput.addEventListener("input", recalc);
+    sellPriceInput.addEventListener("input", recalc);
+    recalc();
+
+    // ===== Action button =====
+    const btn = document.createElement("button");
+    btn.textContent = "Sell";
+    btn.onclick = async () => {
+      const q = parseInt(sellQtyInput.value,10);
+      const p = parseFloat(sellPriceInput.value);
+      const d = sellDateInput.value;
+
+      if (!Number.isInteger(q) || q <= 0) return err("Enter valid Sell Qty");
+      if (!(p > 0)) return err("Enter Sell Price");
+
+      try {
+        const out = await api(`/sell/${r.id}`, {
+          method: "POST",
+          body: JSON.stringify({ qty: q, sell_price: p, sell_date: d })
+        });
+        msg(out.message || `Sold ${q}. Profit: ${money(out.profit||0)}`);
+        loadSales();// refresh past sales table
+        load(); // refresh table
+        
+      } catch(e) { err(e.message || "Sell failed"); }
+    };
+
+    // ===== Build all cells =====
+    const idCell = document.createElement("td"); idCell.textContent = r.id;
+    const nameCell = document.createElement("td"); nameCell.textContent = r.name;
+    const sizeCell = document.createElement("td"); sizeCell.textContent = r.size;
+    const qtyCell = document.createElement("td"); qtyCell.className = "num"; qtyCell.textContent = r.quantity;
+    const purchaseCell = document.createElement("td"); purchaseCell.className = "num"; purchaseCell.textContent = money(r.purchase_price);
+    const remainingAmountCell = document.createElement("td"); remainingAmountCell.className = "num"; remainingAmountCell.textContent = money(r.quantity * r.purchase_price);
+    const sellQtyCell = document.createElement("td"); sellQtyCell.className = "num"; sellQtyCell.appendChild(sellQtyInput);
+    const sellPriceCell = document.createElement("td"); sellPriceCell.className = "num"; sellPriceCell.appendChild(sellPriceInput);
+    const sellDateCell = document.createElement("td"); sellDateCell.appendChild(sellDateInput);
+    const totalSellPriceCell = totalSellCell;
+    const remainAfterQtyCell = remainAfterCell;
+    const actionCell = document.createElement("td"); actionCell.appendChild(btn);
+
+    // ===== Append all cells in order =====
+    tr.appendChild(idCell);
+    tr.appendChild(nameCell);
+    tr.appendChild(sizeCell);
+    tr.appendChild(qtyCell);
+    tr.appendChild(purchaseCell);
+    tr.appendChild(remainingAmountCell);
+    tr.appendChild(sellQtyCell);
+    tr.appendChild(sellPriceCell);
+    tr.appendChild(sellDateCell);        // ✅ Sell Date column
+    tr.appendChild(totalSellPriceCell);
+    tr.appendChild(remainAfterQtyCell);
+    tr.appendChild(actionCell);
+
+    tb.appendChild(tr);
   });
 
   if (!rows.length) {
-   const tr = document.createElement("tr");
-   const td = document.createElement("td");
-   td.colSpan = 11; td.textContent = "No stock found in this section. Add purchases first.";
-   tr.appendChild(td); tb.appendChild(tr);
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 12;
+    td.textContent = "No stock found in this section. Add purchases first.";
+    tr.appendChild(td);
+    tb.appendChild(tr);
   }
- }
+}
+
 
  // init auth state & load
- try { const u = JSON.parse(localStorage.getItem("user")||"null"); if (u) who(u); else who(""); } catch{}
- if (!section) err("No section in URL"); else load();
+ //try { const u = JSON.parse(localStorage.getItem("user")||"null"); if (u) who(u); else who(""); } catch{}
+ if (!section) err("No section in URL"); else {
+  
+  loadSales();
+  load();     // load stock
+   } // load past sales;
 </script>
 </body>
 </html>

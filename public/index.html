@@ -1,9 +1,18 @@
+
+<script>
+const token = localStorage.getItem("token");
+
+if(!token){
+ location.href="/login.html";
+}
+</script>
 <!doctype html>
 <html lang="en">
 <head>
  <meta charset="utf-8" />
  <meta name="viewport" content="width=device-width,initial-scale=1" />
  <title>Select Section</title>
+ <link rel="stylesheet" href="style.css">
  <style>
   :root { color-scheme: light dark; }
   body { font-family: Arial, sans-serif; margin: 32px; display: flex; flex-direction: column; gap: 16px; }

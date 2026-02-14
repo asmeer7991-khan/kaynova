@@ -37,6 +37,7 @@ db.serialize(() => {
    section TEXT NOT NULL CHECK(section IN ('MOM','KAYNOVA')),
    user_id INTEGER NOT NULL,
    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+   purchase_date TEXT,
    FOREIGN KEY(user_id) REFERENCES users(id)
   )
  `);
@@ -52,6 +53,7 @@ db.serialize(() => {
    unit_selling REAL NOT NULL,
    profit REAL NOT NULL,
    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+   sell_date TEXT,
    FOREIGN KEY(tshirt_id) REFERENCES tshirts(id),
    FOREIGN KEY(user_id) REFERENCES users(id)
   )
@@ -108,10 +110,21 @@ app.post("/auth/login", (req, res) => {
 
 // === PURCHASE (no selling price here) ===
 app.post("/purchase", auth, (req, res) => {
- const { name, color, size, quantity, purchase_price, total_purchase_price, section } = req.body || {};
+ //const { name, color, size, quantity, purchase_price, total_purchase_price, section } = req.body || {};
+ const {
+ name,
+ color,
+ size,
+ quantity,
+ purchase_price,
+ total_purchase_price,
+ section,
+ purchase_date
+} = req.body || {};
  const qty = Number(quantity);
  const pBuy = Number(purchase_price);
  const sec = (section || "").toUpperCase();
+ if (!["MOM","KAYNOVA"].includes(sec)) return res.status(400).send({ message: "invalid input" });
 
  if (!name || !color || !size || !["MOM","KAYNOVA"].includes(sec))
   return res.status(400).send({ message: "invalid input" });
@@ -121,14 +134,40 @@ app.post("/purchase", auth, (req, res) => {
   return res.status(400).send({ message: "purchase price invalid" });
 
  db.run(
-  `INSERT INTO tshirts (name,color,size,original_qty,quantity,purchase_price,section,user_id)
-   VALUES (?,?,?,?,?,?,?,?)`,
-  [name, color, size, qty, qty, pBuy, sec, req.user.id],
-  function (err) {
+ `INSERT INTO tshirts (name,color,size,original_qty,quantity,purchase_price,section,user_id,purchase_date)
+ VALUES (?,?,?,?,?,?,?,?,?)`,
+ [name, color, size, qty, qty, pBuy, sec, req.user.id, purchase_date],
+ function (err) {
    if (err) return res.status(500).send({ error: err.message });
    res.send({ message: "Purchase saved", id: this.lastID });
+ }
+);
+});
+
+// get all sales (for logged in user)
+app.get("/sales", auth, (req, res) => {
+  const section = (req.query.section || "").toUpperCase(); // get section from query
+  const userFilter = req.user.role === "admin" ? "" : "WHERE s.user_id = ?";
+  const params = req.user.role === "admin" ? [] : [req.user.id];
+
+  let sectionFilter = "";
+  if (["MOM", "KAYNOVA"].includes(section)) {
+    sectionFilter = userFilter ? ` AND t.section = ?` : `WHERE t.section = ?`;
+    params.push(section);
   }
- );
+
+  db.all(
+    `SELECT s.id, s.qty, s.unit_selling, s.profit, s.sell_date, t.name as tshirt_name
+     FROM sales s
+     JOIN tshirts t ON t.id = s.tshirt_id
+     ${userFilter}${sectionFilter}
+     ORDER BY s.id DESC`,
+    params,
+    (err, rows) => {
+      if (err) return res.status(500).send({ error: err.message });
+      res.send(rows);
+    }
+  );
 });
 
 // === STOCK for Sell page ===
@@ -139,7 +178,7 @@ app.get("/stock", auth, (req, res) => {
  if (req.user.role !== "admin") { clauses.push("user_id = ?"); params.push(req.user.id); }
  if (["MOM","KAYNOVA"].includes(section)) { clauses.push("section = ?"); params.push(section); }
  const where = clauses.length ? "WHERE " + clauses.join(" AND ") : "";
- db.all(`SELECT id,name,size,quantity,purchase_price,original_qty FROM tshirts ${where} ORDER BY id DESC`, params, (err, rows) => {
+db.all(`SELECT id,name,color,size,quantity,purchase_price,original_qty,purchase_date FROM tshirts ${where} ORDER BY id DESC`, params, (err, rows) => {
   if (err) return res.status(500).send({ error: err.message });
   res.send(rows);
  });
@@ -147,49 +186,63 @@ app.get("/stock", auth, (req, res) => {
 
 // === SELL (accepts { qty, sell_price }) ===
 app.post("/sell/:id", auth, (req, res) => {
- const id = Number(req.params.id);
- const qty = Number(req.body?.qty);
- const sellPrice = Number(req.body?.sell_price);
+  const id = Number(req.params.id);
+  const qty = Number(req.body?.qty);
+  const sellPrice = Number(req.body?.sell_price);
+  const sellDate = req.body?.sell_date || new Date().toISOString();
 
- if (!Number.isInteger(id) || !Number.isInteger(qty) || qty <= 0)
-  return res.status(400).send({ message: "invalid id/qty" });
- if (!(sellPrice > 0))
-  return res.status(400).send({ message: "sell price invalid" });
+  // validation
+  if (!Number.isInteger(id) || !Number.isInteger(qty) || qty <= 0)
+    return res.status(400).send({ message: "invalid id/qty" });
+  if (!(sellPrice > 0))
+    return res.status(400).send({ message: "sell price invalid" });
 
- const ownFilter = req.user.role === "admin" ? "" : " AND user_id = ?";
- const ownParam = req.user.role === "admin" ? [] : [req.user.id];
+  const ownFilter = req.user.role === "admin" ? "" : " AND user_id = ?";
+  const ownParam = req.user.role === "admin" ? [] : [req.user.id];
 
- db.get(
-  `SELECT id, quantity, purchase_price FROM tshirts WHERE id = ?${ownFilter}`,
-  [id, ...ownParam],
-  (err, row) => {
-   if (err) return res.status(500).send({ error: err.message });
-   if (!row) return res.send({ message: "Not found or not yours" });
-   if (row.quantity < qty) return res.send({ message: "Not enough stock" });
+  // fetch the tshirt row
+  db.get(
+    `SELECT id, quantity, purchase_price FROM tshirts WHERE id = ?${ownFilter}`,
+    [id, ...ownParam],
+    (err, row) => {
+      if (err) return res.status(500).send({ error: err.message });
+      if (!row) return res.status(404).send({ message: "Item not found or not yours" });
+      if (row.quantity < qty) return res.status(400).send({ message: "Not enough stock" });
 
-   const profit = qty * (sellPrice - row.purchase_price);
-   const newQty = row.quantity - qty;
+      const profit = qty * (sellPrice - row.purchase_price);
+      const newQty = row.quantity - qty;
 
-   db.run("UPDATE tshirts SET quantity = ? WHERE id = ?", [newQty, id], function (err2) {
-    if (err2) return res.status(500).send({ error: err2.message });
-    db.run(
-     `INSERT INTO sales (tshirt_id,user_id,qty,unit_purchase,unit_selling,profit)
-      VALUES (?,?,?,?,?,?)`,
-     [id, req.user.id, qty, row.purchase_price, sellPrice, profit],
-     () => {
-      const remaining_amount = newQty * row.purchase_price;
-      res.send({
-       message: "Sold",
-       sold_qty: qty,
-       profit,
-       remaining_qty: newQty,
-       remaining_amount
-      });
-     }
-    );
-   });
-  }
- );
+      // 1️⃣ update stock
+      db.run(
+        "UPDATE tshirts SET quantity = ? WHERE id = ?",
+        [newQty, id],
+        function (err2) {
+          if (err2) return res.status(500).send({ error: err2.message });
+
+          // 2️⃣ insert sale
+          db.run(
+            `INSERT INTO sales 
+             (tshirt_id,user_id,qty,unit_purchase,unit_selling,profit,sell_date)
+             VALUES (?,?,?,?,?,?,?)`,
+            [id, req.user.id, qty, row.purchase_price, sellPrice, profit, sellDate],
+            function (err3) {
+              if (err3) return res.status(500).send({ error: err3.message });
+
+              const remaining_amount = newQty * row.purchase_price;
+              res.send({
+                message: "Sold successfully",
+                sold_qty: qty,
+                profit,
+                remaining_qty: newQty,
+                remaining_amount,
+                sell_date: sellDate
+              });
+            }
+          );
+        }
+      );
+    }
+  );
 });
 
 // === PROFIT DETAILS (items + totals) ===
