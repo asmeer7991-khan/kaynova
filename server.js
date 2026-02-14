@@ -1,6 +1,7 @@
 // server.js
 const express = require("express");
-const sqlite3 = require("sqlite3").verbose();
+const Database = require('better-sqlite3');
+const db = new Database('database.sqlite'); // adjust file name
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -13,7 +14,7 @@ app.use(express.static("public"));
 const JWT_SECRET = process.env.JWT_SECRET || "change-this-secret";
 
 // === DB ===
-const db = new sqlite3.Database("database.db");
+//const db = new sqlite3.Database("database.db");
 db.serialize(() => {
  db.run(`
   CREATE TABLE IF NOT EXISTS users (
