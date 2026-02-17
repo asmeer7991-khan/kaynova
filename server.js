@@ -1,7 +1,15 @@
+
+const multer = require("multer");
 // server.js
 const express = require("express");
+//const Database = require('better-sqlite3');
 const Database = require('better-sqlite3');
-const db = new Database('database.sqlite'); // adjust file name
+const dbFile = process.env.DB_FILE || "database.sqlite";
+const db = new Database(dbFile); // adjust file name
+
+//const info = db.prepare("PRAGMA table_info(tshirts);").all();
+//console.log(info);
+
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -10,6 +18,18 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 app.use(express.static("public"));
+app.use("/uploads", express.static("uploads"));
+
+const storage = multer.diskStorage({
+ destination: function (req, file, cb) {
+  cb(null, "uploads/");
+ },
+ filename: function (req, file, cb) {
+  cb(null, Date.now() + "-" + file.originalname);
+ }
+});
+
+const upload = multer({ storage: storage });
 
 const JWT_SECRET = process.env.JWT_SECRET || "change-this-secret";
 
@@ -35,7 +55,9 @@ CREATE TABLE IF NOT EXISTS tshirts (
  user_id INTEGER NOT NULL,
  created_at TEXT NOT NULL DEFAULT (datetime('now')),
  purchase_date TEXT,
+ image TEXT,
  FOREIGN KEY(user_id) REFERENCES users(id)
+ 
 );
 
 CREATE TABLE IF NOT EXISTS sales (
@@ -106,7 +128,7 @@ try {
 });
 
 // === PURCHASE (no selling price here) ===
-app.post("/purchase", auth, (req, res) => {
+app.post("/purchase", auth, upload.single("image"), (req, res) => {
  //const { name, color, size, quantity, purchase_price, total_purchase_price, section } = req.body || {};
  const {
  name,
@@ -131,16 +153,37 @@ app.post("/purchase", auth, (req, res) => {
   return res.status(400).send({ message: "purchase price invalid" });
 
 try {
-  const result = db.prepare(
-    `INSERT INTO tshirts 
-     (name,color,size,original_qty,quantity,purchase_price,section,user_id,purchase_date)
-     VALUES (?,?,?,?,?,?,?,?,?)`
-  ).run(name, color, size, qty, qty, pBuy, sec, req.user.id, purchase_date);
+  const image = req.file ? "/uploads/" + req.file.filename : null;
+
+const result = db.prepare(
+ `INSERT INTO tshirts 
+ (name,color,size,original_qty,quantity,purchase_price,section,user_id,purchase_date,image)
+ VALUES (?,?,?,?,?,?,?,?,?,?)`
+).run(name, color, size, qty, qty, pBuy, sec, req.user.id, purchase_date, image);
 
   res.send({ message: "Purchase saved", id: result.lastInsertRowid });
 } catch(err) {
   res.status(500).send({ error: err.message });
 }
+});
+
+app.delete("/purchase/:id", auth, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).send({ message: "Invalid id" });
+
+  try {
+    // only allow delete if quantity === 0
+    const row = db.prepare("SELECT quantity FROM tshirts WHERE id = ? AND user_id = ?")
+                  .get(id, req.user.id);
+    if (!row) return res.status(404).send({ message: "Purchase not found" });
+    if (row.quantity > 0) return res.status(400).send({ message: "Cannot delete, quantity > 0" });
+
+    db.prepare("DELETE FROM tshirts WHERE id = ?").run(id);
+    res.send({ message: "Purchase deleted ✅" });
+
+  } catch (err) {
+    res.status(500).send({ error: err.message });
+  }
 });
 
 // get all sales (for logged in user)
@@ -178,7 +221,7 @@ app.get("/stock", auth, (req, res) => {
  if (["MOM","KAYNOVA"].includes(section)) { clauses.push("section = ?"); params.push(section); }
  const where = clauses.length ? "WHERE " + clauses.join(" AND ") : "";
 try {
-  const rows = db.prepare(`SELECT id,name,color,size,quantity,purchase_price,original_qty,purchase_date FROM tshirts ${where} ORDER BY id DESC`).all(...params);
+  const rows = db.prepare(`SELECT id,name,color,size,quantity,purchase_price,original_qty,purchase_date,image FROM tshirts ${where} ORDER BY id DESC`).all(...params);
   res.send(rows);
 } catch(err) {
   res.status(500).send({ error: err.message });
