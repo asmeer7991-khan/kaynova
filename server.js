@@ -4,7 +4,7 @@ const multer = require("multer");
 const express = require("express");
 //const Database = require('better-sqlite3');
 const Database = require('better-sqlite3');
-const dbFile = process.env.DB_FILE || "database.sqlite";
+const dbFile = process.env.DB_FILE || "database.db";
 const db = new Database(dbFile); // adjust file name
 
 //const info = db.prepare("PRAGMA table_info(tshirts);").all();
